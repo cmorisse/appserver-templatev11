@@ -65,24 +65,7 @@ function remove_buildout_files {
 
 
 function setup_c9_aws {
-
-    
-    # Update bashrc with locale if not already done
-    if grep -Fxq "# Added by appserver-templatevXX install.sh" /home/$USER/.bashrc ; then
-        echo "Skipping /home/$USER/.bashrc update"
-    else
-        cat >> /home/ubuntu/.bashrc <<EOT
-#
-# Added by appserver-templatevXX install.sh
-export LANG=fr_FR.UTF-8
-export LANGUAGE=fr_FR
-export LC_ALL=fr_FR.UTF-8
-export LC_CTYPE=fr_FR.UTF-8
-EOT
-    fi
-    
     sudo yum install -y htop
-    sudo yum install -y libyaml-devel
     sudo yum install -y libxml2
     sudo yum install -y libxslt-devel
     sudo yum install -y libtiff-devel libjpeg-devel zlib-devel freetype-devel lcms2-devel libwebp-devel tcl-devel tk-devel
@@ -90,57 +73,14 @@ EOT
     sudo yum install -y openldap-devel
 
     # lessc
-    sudo npm config set registry http://registry.npmjs.org/
-    sudo npm install -g less 
-    sudo npm install -g less-plugin-clean-css
+    sudo npm install -g less less-plugin-clean-css
     sudo ln -fs /usr/lib/node_modules/less/bin/lessc /usr/bin/lessc    
     
     # wkhtmltopdf
     wget https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.1/wkhtmltox-0.12.1_linux-centos6-amd64.rpm
     sudo yum install -y wkhtmltox-0.12.1_linux-centos6-amd64.rpm
     rm wkhtmltox-0.12.1_linux-centos6-amd64.rpm
- 
-    # Install PostgreSQL 9.6
-    if [ ! -f ~/.installsh.pg96 ]; then    
-
-        sudo yum install -y postgresql96-server
-        #sudo service postgresql96 initdb --locale=fr_FR.UTF-8
-        sudo su - postgres -c 'initdb --locale=fr_FR.UTF8 --pgdata=/var/lib/pgsql96/data'
-        sudo service postgresql96 start
-        sudo chkconfig  postgresql96 on
-
-        # sudo pg_dropcluster 9.3 main
-        # sudo add-apt-repository "deb http://apt.postgresql.org/pub/repos/apt/ trusty-pgdg main"
-        # wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -    
-        # sudo apt-get update
-        # sudo apt-get install -y postgresql-9.6    
-        # sudo pg_dropcluster 9.6 main
-            
-        # sudo pg_createcluster --locale fr_FR.UTF-8 9.6 main
-        # sudo pg_ctlcluster 9.6 main start
-        sudo su - postgres -c 'psql -c \"CREATE ROLE \"ec2-user\" WITH LOGIN SUPERUSER CREATEDB CREATEROLE PASSWORD 'ubuntu';\"'
-        sudo su - postgres -c 'psql -c \"CREATE DATABASE \"ec2-user\";\"'
-
-        touch ~/.installsh.pg96
-    else
-        echo "Skipping postgresql-9.6 install. Delete ~/.installsh.pg96 to force installation."
-    fi    
-
-    # create a basic buildout.cfg if none is found
-    if [ ! -f buildout.cfg ]; then    
-        cat >> buildout.cfg <<EOT 
-[buildout]
-extends = appserver.cfg
-
-[openerp]
-options.admin_passwd = admin
-options.db_user = ec2-user
-options.db_password = ec2-user
-options.db_host = 127.0.0.1
-options.xmlrpc_port = 8080    
-EOT
-    fi    
-
+    
 }
 
 
@@ -254,7 +194,7 @@ EOT
 
 function setup_xenial {
     
-    # Setup UTF8 locale
+    # Set a UTF8 locale
     sudo locale-gen fr_FR fr_FR.UTF-8
     sudo update-locale    
     
@@ -387,7 +327,6 @@ if [[ $COMMAND == "help"  ||  $HELP == 1 ]]; then
     echo "  ./install.sh help              Prints this message."
     echo "  ./install.sh [-i ...] openerp  Install OpenERP using buildout (prerequisites must be installed)."
     echo "  ./install.sh dependencies      Install dependencies specific to this server."
-    echo "  ./install.sh c9-aws            Install Prerequisites on an AWS Cloud9 EC2 Host (Amazon AMI)."
     echo "  ./install.sh c9-trusty         Install Prerequisites on a Cloud9 Ubuntu 14 blank container."
     echo "  ./install.sh xenial            Install Prerequisites on a fresh Ubuntu Xenial."
     echo "  ./install.sh reset             Remove all buildout installed files."
@@ -404,9 +343,6 @@ if [[ $COMMAND == "reset" ]]; then
     exit
 elif [[ $COMMAND == "openerp" ]]; then
     install_openerp
-    exit
-elif [[ $COMMAND == "c9-aws" ]]; then
-    setup_c9_aws
     exit
 elif [[ $COMMAND == "c9-trusty" ]]; then
     setup_c9_trusty_blank_container
