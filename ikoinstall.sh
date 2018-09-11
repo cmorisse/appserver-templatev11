@@ -1,25 +1,66 @@
 #!/bin/bash
 
+IKIO_VERSION=0.1
+IKIO_OS=`cat /etc/os-release | grep ^ID= | cut -d "=" -f 2`
+IKIO_OS_VERSION=`cat /etc/os-release | grep VERSION_ID= | cut -d "=" -f 2 | cut -d "\"" -f 2`
+IKIO_OS_VERSION_CODENAME=`cat /etc/os-release | grep VERSION_CODENAME= | cut -d "=" -f 2 | cut -d "\"" -f 2`
 
-PYPI_INDEX=""
-BUILDOUT_INDEX=""
 
-HELP=0
 
-RUNNING_ON=$(uname) 
+P_ODOO_VERSION=11
+P_ADMIN_PASSWORD=admin
+P_USERNAME=$USER
+P_PASSWORD=$USER
+P_LOCALE="fr_FR.UTF-8"
+P_LOCALE_LANG=(${P_LOCALE//./ })
+P_DEBUG=
+SCRIPT_COMMAND=
+
 
 #
-# We need bash
+# Test shell and exec environment compliance
 #
-if [ -z "$BASH_VERSION" ]; then
-    echo -e "Error: BASH shell is required !"
-    exit 1
-fi
+function test_script_prerequisites {
+    getopt --test > /dev/null
+    if [[ $? -ne 4 ]]; then
+        echo "Required getopt is not available. Execution aborted."
+        exit 1
+    fi
+    whotest[0]="test" || (echo 'Required Arrays are not supported in this version of bash. Execution aborted.' && exit 2)
+}
+
 
 #
-# install_openerp
+# installs all packages on ubuntu 18.04/bionic appart from postgresql
+function install_packages_ubuntu_xenial {
+    sudo apt-get update
+    sudo apt-get install -y libsasl2-dev python-dev libldap2-dev libssl-dev
+ 
+    sudo apt install -y libz-dev gcc
+    sudo apt install -y libxml2-dev libxslt1-dev
+    sudo apt install -y libpq-dev
+    sudo apt install -y libldap2-dev libsasl2-dev
+    sudo apt install -y libjpeg-dev libfreetype6-dev liblcms2-dev
+    sudo apt install -y libopenjpeg5 libopenjpeg-dev
+    sudo apt install -y libwebp5  libwebp-dev
+    sudo apt install -y libtiff-dev
+    sudo apt install -y libyaml-dev
+    sudo apt install -y bzr mercurial git
+    sudo apt install -y curl htop vim tmux
+    sudo apt install -y supervisor
+    sudo apt install -y libbz2-dev    
+    sudo apt install -y libreadline-dev 
+    sudo apt install -y libsqlite3-dev
+}
+
+
+
+
+
+
 #
-function install_openerp {
+#
+function install_odoo {
     # TODO: Rework this test
     if [ -d py36 ]; then
         echo "install.sh has already been launched."
@@ -33,8 +74,22 @@ function install_openerp {
     py36/bin/pip install $PYPI_INDEX cython==0.26
     py36/bin/buildout
 
+    # generate buildout.cfg
+    if [ ! -f buildout.cfg ]; then    
+        cat > buildout.cfg <<EOT 
+[buildout]
+extends = appserver.cfg
+
+[openerp]
+options.admin_passwd = ${P_ADMIN_PASSWORD}
+options.db_user = ${P_USERNAME}
+options.db_password = ${P_PASSWORD}
+options.db_host = 127.0.0.1
+options.xmlrpc_port = 8080    
+EOT
+    fi
     
-    if [ $RUNNING_ON == "Darwin" ]; then
+    if [ $IKIO_OS == "Darwin" ]; then
         echo "Running on Darwin."
         py27/bin/pip install python-ldap==2.4.28 --global-option=build_ext --global-option="-I$(xcrun --show-sdk-path)/usr/include/sasl"
     fi    
@@ -47,7 +102,10 @@ function install_openerp {
     echo 
 }
 
-function remove_buildout_files {
+##
+# Removes all buildout files for a clean restart
+#
+function reset_odoo {
     echo "Removing all buidout generated items..."
     echo "    Not removing downloads/ and eggs/ for performance reason."
     rm -rf .installed.cfg
@@ -64,155 +122,180 @@ function remove_buildout_files {
 
 
 
-function setup_c9_aws {
-    sudo yum install -y htop
-    sudo yum install -y libxml2
-    sudo yum install -y libxslt-devel
-    sudo yum install -y libtiff-devel libjpeg-devel zlib-devel freetype-devel lcms2-devel libwebp-devel tcl-devel tk-devel
-    sudo yum install -y postgresql96-devel.x86_64
-    sudo yum install -y openldap-devel
 
-    # lessc
-    sudo npm install -g less less-plugin-clean-css
-    sudo ln -fs /usr/lib/node_modules/less/bin/lessc /usr/bin/lessc    
-    
-    # wkhtmltopdf
-    wget https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.1/wkhtmltox-0.12.1_linux-centos6-amd64.rpm
-    sudo yum install -y wkhtmltox-0.12.1_linux-centos6-amd64.rpm
-    rm wkhtmltox-0.12.1_linux-centos6-amd64.rpm
-    
+
+function print_prolog {
+    echo 
+    echo "ikoinstall.sh version $IKIO_VERSION"
+    echo "(c) 2018 Cyril MORISSE / @cmorisse"
+    echo 
 }
 
+function print_intro_message {
+    echo " use ikoinstall.sh help for usage instructions."
+    echo 
+}
 
+function print_help_message {
+    echo "Usage: ./ikoinstall.sh {options} command"
+    echo
+    echo "Available options:"
+    echo "  -O/--odoo-version   Odoo version to install: 8, 9, 10 or 11 (default=$P_ODOO_VERSION)"
+    echo "  -A/--admin-password Odoo admin password for buildout.cfg (default=$P_USERNAME)"
+    echo "  -U/--username       PostgreSQL username used in buildout.cfg (default=$P_USERNAME)"
+    echo "  -W/--password       PostgreSQL password used in buildout.cfg (default=$P_PASSWORD)"
+    echo "  -L/--locale         PostgreSQL Locale used (default=$P_LOCALE)"
+    echo "  -D/--debug          Displays debugging information"
+    echo    
+    echo "Available commands:"
+    echo "   help               Prints this message."
+    echo "   prerequisites      Installs system prerequisites specific to \"$IKIO_OS $IKIO_OS_VERSION\""
+    echo "   odoo               Installs Odoo."
+    echo "   dependencies       Installs dependencies specific to this project."
+    echo "   reset              Remove all buildout installed files."
+    echo 
+    exit
+}
 
-
-
-
-
-
-
-
-
-function setup_c9_trusty_blank_container {
+function parseargs {
+    #
+    # Defined support options and use getopts to parse parameters
+    #
+    OPTIONS=O:U:W:L:D
+    LONG_OPTIONS=odoo-version:,username:,password:,locale:debug
     
-
-    # Setup locale and update bashrc 
-    if grep -Fxq "# Added by appserver-templatev11 install.sh" /home/$USER/.bashrc ; then
-        echo "Skipping /home/$USER/.bashrc update"
-    else
-
-        # Set a UTF8 locale
-        sudo locale-gen fr_FR fr_FR.UTF-8
-        sudo update-locale    
-
-        cat >> /home/ubuntu/.bashrc <<EOT
-#
-# Added by appserver-templatev11 install.sh
-export LANG=fr_FR.UTF-8
-export LANGUAGE=fr_FR
-export LC_ALL=fr_FR.UTF-8
-export LC_CTYPE=fr_FR.UTF-8
-
-EOT
+    PARSED=$(getopt --options=$OPTIONS --longoptions=$LONG_OPTIONS --name "$0" -- "$@")
+    if [[ $? -ne 0 ]]; then
+        # e.g. $? == 1
+        #  then getopt has complained about wrong arguments to stdout
+        exit 2
+    fi
+    
+    # 
+    # process getopts recognized options until we see -- 
+    #
+    eval set -- "$PARSED"
+    while true; do
+        case "$1" in
+            -O|--odoo-version)
+                P_ODOO_VERSION="$2"
+                shift 2
+                ;;
+            -U|--username)
+                P_USERNAME="$2"
+                P_PASSWORD="$2"
+                shift 2
+                ;;
+            -W|--password)
+                P_PASSWORD="$2"
+                shift 2
+                ;;
+            -L|--locale)
+                P_LOCALE="$2"
+                P_LOCALE_LANG=(${P_LOCALE//./ })                
+                shift 2
+                ;;
+            -D|--debug)
+                P_DEBUG=true
+                shift
+                ;;
+            --)
+                shift
+                break
+                ;;
+            *)
+                echo "Script Internal Error"
+                exit 3
+                ;;
+        esac
+    done
+    
+    #
+    # now process commands
+    #
+    for i in "$@" ; do
+        case $i in
+            #
+            # Commands
+            #
+            help)  # Install odoo command
+            SCRIPT_COMMAND=print_help_message
+            shift # past argument with no value
+            ;;
+            odoo)  # Install odoo command
+            SCRIPT_COMMAND=install_odoo
+            shift # past argument with no value
+            ;;
+            reset)  # Reset odoo install
+            SCRIPT_COMMAND=reset_odoo
+            shift # past argument with no value
+            ;;
+            prerequisites)  # Install odoo command
+            SCRIPT_COMMAND=install_prerequisites
+            shift # past argument with no value
+            ;;
+            dependencies)  # Install odoo command
+            SCRIPT_COMMAND=install_dependencies
+            shift # past argument with no value
+            ;;
+            devtest)  # This is an undocumented command used for script writing and debugging
+            SCRIPT_COMMAND=dev_test
+            shift # past argument with no value
+            ;;
+            *)
+                echo "Unrecognized command: \"$1\" aborting."
+                exit 3
+            ;;
+        esac
+    done
+    
+    if [ -z $SCRIPT_COMMAND ]; then # string length is 0
+    #then 
+        SCRIPT_COMMAND=print_intro_message
     fi
 
-    # Install PostgreSQL 9.6
-    if [ ! -f ~/.installsh.pg96 ]; then    
-
-        sudo pg_dropcluster 9.3 main
-        
-        sudo add-apt-repository "deb http://apt.postgresql.org/pub/repos/apt/ trusty-pgdg main"
-        wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -    
-        sudo apt-get update
-        sudo apt-get install -y postgresql-9.6    
-        sudo pg_dropcluster 9.6 main
-            
-        sudo pg_createcluster --locale fr_FR.UTF-8 9.6 main
-        sudo pg_ctlcluster 9.6 main start
-        sudo su - postgres -c "psql -c \"CREATE ROLE ubuntu WITH LOGIN SUPERUSER CREATEDB CREATEROLE PASSWORD 'ubuntu';\"" 
-        sudo su - postgres -c "psql -c \"CREATE DATABASE ubuntu;\"" 
-
-        touch ~/.installsh.pg96
-    else
-        echo "Skipping postgresql-9.6 install. Delete ~/.installsh.pg96 to force installation."
-    fi    
-
-    # create a basic buildout.cfg if none is found
-    if [ ! -f buildout.cfg ]; then    
-        cat >> buildout.cfg <<EOT 
-[buildout]
-extends = appserver.cfg
-
-[openerp]
-options.admin_passwd = admin
-options.db_user = ubuntu
-options.db_password = ubuntu
-options.db_host = 127.0.0.1
-options.xmlrpc_port = 8080    
-EOT
-    fi    
-    
-    # Node, lessc and plugin requies for Odoo
-    if [ ! -f ~/.installsh.nodeplugins ]; then    
-        sudo npm install -g less less-plugin-clean-css
-        sudo ln -fs /usr/local/bin/lessc /usr/bin/lessc
-        touch ~/.installsh.nodeplugins
-    else
-        echo "Skipping Odoo nodejs tools and plugins install. Delete ~/.installsh.nodeplugins to force installation."
-    fi    
-
-    # pyenv
-    if [ ! -f ~/.installsh.pyenv ]; then
-        git clone https://github.com/pyenv/pyenv.git ~/.pyenv
-        sed -i.bak '/# If not running interactively/i #install.sh added pyenv\nexport PYENV_ROOT=\"$HOME/.pyenv\"\nexport PATH=\"$PYENV_ROOT/bin:$PATH\"\nif command -v pyenv 1>/dev/null 2>&1; then\n  eval \"$(pyenv init -)\"\nfi\n\n' ~/.bashrc
-        source ~/.bashrc
-        touch ~/.installsh.pyenv
-    else
-        echo "Skipping pyenv install. Delete ~/.installsh.pyenv to force installation."
-    fi    
-
-    # py36
-    if [ ! -f ~/.installsh.py36 ]; then
-        pyenv install 3.6.3
-        pyenv local 3.6.3
-        touch ~/.installsh.py36
-        echo "Python 3.6.3 installed."
-    else
-        echo "Skipping Python 3.6.3 install. Delete ~/.installsh.py36 to force installation."
-    fi    
-
-    # install Cloud9's missing packages
-    # sudo apt-get install -y libsasl2-dev python-dev libldap2-dev libssl-dev
-    sudo apt-get install -y libldap2-dev libsasl2-dev
-
-    echo
-    echo
-    echo "Reopen this Terminal and check python 3 is available by running 'python' before running ./install.sh openerp"
-    echo
+    if [ $P_DEBUG ]; then
+        echo "debug: PARSED=${PARSED}"
+        echo "debug: P_ODOO_VERSION     = ${P_ODOO_VERSION}"
+        echo "debug: P_LOCALE           = ${P_LOCALE}"
+        echo "debug: P_LOCALE_LANG      = ${P_LOCALE_LANG}"
+        echo "debug: P_USERNAME         = ${P_USERNAME}"
+        echo "debug: P_PASSWORD         = ${P_PASSWORD}"
+        echo "debug: P_DEBUG            = ${P_DEBUG}"
+        echo "debug: SCRIPT_COMMAND     = ${SCRIPT_COMMAND}"
+        echo "debug: IKIO_OS            = ${IKIO_OS}"
+        echo "debug: IKIO_OS_VERSION    = ${IKIO_OS_VERSION}"
+    fi
 }
 
 
-function setup_xenial {
-    
-    # Set a UTF8 locale
-    sudo locale-gen fr_FR fr_FR.UTF-8
+# We need to add P_LOCALE as we will use it to install postgresql
+
+function setup_locale {
+
+    # Add the locale
+    sudo locale-gen $P_LOCALE_LANG $P_LOCALE
     sudo update-locale    
     
     # Update bashrc with locale if needed
-    if grep -Fxq "# Added by appserver-templatev10 install.sh" /home/$USER/.bashrc ; then
-        echo "Skipping /home/$USER/.bashrc update"
-    else
-        cat >> /home/ubuntu/.bashrc <<EOT
+#    if grep -Fxq "# Added by inouk Odoo install.sh" $HOME/.bashrc ; then
+#        echo "Skipping $HOME/.bashrc update"
+#    else
+#        cat >> /home/ubuntu/.bashrc <<EOT
 #
-# Added by appserver-templatev10 install.sh
-export LANG=fr_FR.UTF-8
-export LANGUAGE=fr_FR
-export LC_ALL=fr_FR.UTF-8
-export LC_CTYPE=fr_FR.UTF-8
-EOT
-    fi
+## Added by inouk Odoo install.sh
+#export LANG=fr_FR.UTF-8
+#export LANGUAGE=fr_FR
+#export LC_ALL=fr_FR.UTF-8
+#export LC_CTYPE=fr_FR.UTF-8
+#EOT
+#    fi
     
-    # Refresh index and install required index
+}
+
+#
+# installs all packages on ubuntu 18.04/bionic appart from postgresql
+function install_packages_ubuntu_bionic {
     sudo apt-get update
     sudo apt-get install -y libsasl2-dev python-dev libldap2-dev libssl-dev
  
@@ -221,141 +304,84 @@ EOT
     sudo apt install -y libpq-dev
     sudo apt install -y libldap2-dev libsasl2-dev
     sudo apt install -y libjpeg-dev libfreetype6-dev liblcms2-dev
-    sudo apt install -y libopenjpeg5 libopenjpeg-dev
+    sudo apt install -y libopenjp2-7 libopenjp2-7-dev
     sudo apt install -y libwebp5  libwebp-dev
     sudo apt install -y libtiff-dev
+    sudo apt install -y libffi-dev
     sudo apt install -y libyaml-dev
     sudo apt install -y bzr mercurial git
     sudo apt install -y curl htop vim tmux
     sudo apt install -y supervisor
+}
 
-    # Install postgresql
-    sudo apt-get install -y postgresql
-    sudo pg_dropcluster --stop 9.5 main
-    sudo pg_createcluster --locale fr_FR.UTF-8 9.5 main
-    sudo pg_ctlcluster 9.5 main start
-    sudo su - postgres -c "psql -c \"CREATE ROLE ubuntu WITH LOGIN SUPERUSER CREATEDB CREATEROLE PASSWORD 'ubuntu';\"" 
-    sudo su - postgres -c "psql -c \"CREATE DATABASE ubuntu;\"" 
-    
-    # Install virtualenv
-    sudo apt-get install -y python-virtualenv
-
-    if [ ! -f buildout.cfg ]; then    
-        cat >> buildout.cfg <<EOT 
-[buildout]
-extends = appserver.cfg
-
-[openerp]
-options.admin_passwd = admin
-options.db_user = ubuntu
-options.db_password = ubuntu
-options.db_host = 127.0.0.1
-options.xmlrpc_port = 8080    
-EOT
+#
+# installs postgresql ubuntu / debian repository
+#
+function install_postgresql_repository_ubuntu {
+    wget -q https://www.postgresql.org/media/keys/ACCC4CF8.asc -O - | sudo apt-key add -
+    #TODO: test wether apr.postgresql.org is already in pgdg list
+    # grep "apt.postgresql.org" /etc/apt/sources.list.d/pgdg.list
+    grep "apt.postgresql.org" /etc/apt/sources.list.d/pgdg.list
+    if [ $? -gt 0 ]
+    then
+        echo "Installing Postgresql"
+        sudo sh -c "echo \"deb http://apt.postgresql.org/pub/repos/apt/ ${IKIO_OS_VERSION_CODENAME}-pgdg main\" >> /etc/apt/sources.list.d/pgdg.list"
+        sudo apt-get update
     fi
-
-    # Install Odoo > v9 dependencies
-    sudo apt install -y nodejs npm
-    sudo ln -fs /usr/bin/nodejs /usr/bin/node    
-    sudo npm install -g less less-plugin-clean-css
-    sudo ln -fs /usr/local/bin/lessc /usr/bin/lessc
-    sudo wget https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.1/wkhtmltox-0.12.1_linux-trusty-amd64.deb
-    sudo apt-get install -y fontconfig libxrender1 libjpeg-turbo8
-    sudo dpkg -i wkhtmltox-0.12.1_linux-trusty-amd64.deb
-    sudo rm wkhtmltox-0.12.1_linux-trusty-amd64.deb
-}
-
-#
-# install project required dependencies
-#
-function install_dependencies {
-    ls
-    if [ -f install_dependencies.sh ]; then    
-        sh install_dependencies.sh
-    else
-        echo "No project specific 'install_dependencies.sh' script found."
-    fi
-}
-
-
-#
-# Placeholder function used to debug snippets
-#
-function debug_function {
     
-    if [ $RUNNING_ON==Darwin ]; then
-        echo "Running on Darwin."
-    fi    
+    # Now we must delete default cluster and recreate one using provided locale
+        sudo apt-get install postgresql postgresql-contrib
+    
+}
 
+#
+# installs postgresql on ubuntu bionic
+# For bionic default postgresql version is 10
+#
+function install_postgresql_ubuntu_bionic {
+    
+    # To test wether a version is install
+    # if [ -f /usr/lib/postgresql/9.5/bin/postgres ]; then
+    # ...
+    # fi
+    
+    
+    # if version 10
+    sudo apt-get install postgresql postgresql-contrib
+
+    #else  
+    #sudo apt-get install postgresql-9.x postgresql-9.x-contrib
+
+
+    # TODO: Now we must delete default cluster and recreate one using provided locale
+    
+}
+
+# installs all system prerequistes
+function install_prerequisites {
+    #setup_locale
+    #install_packages_${IKIO_OS}_${IKIO_OS_VERSION_CODENAME}
+    #install_postgresql_repository_${IKIO_OS}
+    install_postgresql_${IKIO_OS}_${IKIO_OS_VERSION_CODENAME}
+    
 }
 
 
-#
-# Process command line options
-#
-while getopts "i:h" opt; do
-    case $opt in
-        i)
-            PYPI_INDEX="-i ${OPTARG}"
-            BUILDOUT_INDEX="index = ${OPTARG}"
-            ;;
 
-        h)
-            HELP=1
-            ;;
 
-        \?)
-            echo "Invalid option: -$OPTARG" >&2
-            exit 1
-            ;;
+function dev_test {
+    P_LOCALE_LANG=(${P_LOCALE//./ })
+    echo "\"${P_LOCALE_LANG}\""
+}
 
-        :)
-            echo "Option -$OPTARG requires an argument." >&2
-            exit 1
-            ;;
-    esac
-done
 
-COMMAND=${@:$OPTIND:1}
 
-echo
-echo "install.sh - Inouk OpenERP/Odoo Buildout Installer"
-echo "(c) 2013-2018 @cmorisse"
 
-if [[ $COMMAND == "help"  ||  $HELP == 1 ]]; then
-    echo "Available commands:"
-    echo "  ./install.sh help              Prints this message."
-    echo "  ./install.sh [-i ...] openerp  Install OpenERP using buildout (prerequisites must be installed)."
-    echo "  ./install.sh dependencies      Install dependencies specific to this server."
-    echo "  ./install.sh c9-trusty         Install Prerequisites on a Cloud9 Ubuntu 14 blank container."
-    echo "  ./install.sh xenial            Install Prerequisites on a fresh Ubuntu Xenial."
-    echo "  ./install.sh reset             Remove all buildout installed files."
-    echo 
-    echo "Available options:"
-    echo "  -i   Pypi Index to use (default=""). See pip install --help"
-    echo "  -h   Prints this message"
-    echo 
-    exit
-fi
 
-if [[ $COMMAND == "reset" ]]; then
-    remove_buildout_files
-    exit
-elif [[ $COMMAND == "openerp" ]]; then
-    install_openerp
-    exit
-elif [[ $COMMAND == "c9-trusty" ]]; then
-    setup_c9_trusty_blank_container
-    exit
-elif [[ $COMMAND == "xenial" ]]; then
-    setup_xenial
-    exit
-elif [[ $COMMAND == "dependencies" ]]; then
-    install_dependencies
-    exit
-elif [[ $COMMAND == "debug" ]]; then
-    debug_function
-    exit
-fi
+test_script_prerequisites
+print_prolog
+# call parseargs passing it all parameters received from 
+parseargs $@
+$SCRIPT_COMMAND
 
-echo "use ./install.sh -h for usage instructions."
+

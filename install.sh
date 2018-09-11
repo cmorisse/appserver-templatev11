@@ -259,12 +259,12 @@ function setup_xenial {
     sudo update-locale    
     
     # Update bashrc with locale if needed
-    if grep -Fxq "# Added by appserver-templatev10 install.sh" /home/$USER/.bashrc ; then
+    if grep -Fxq "# Locale setup - Added by appserver-templatevXX install.sh" /home/$USER/.bashrc ; then
         echo "Skipping /home/$USER/.bashrc update"
     else
         cat >> /home/ubuntu/.bashrc <<EOT
 #
-# Added by appserver-templatev10 install.sh
+# Locale setup - Added by appserver-templatevXX install.sh
 export LANG=fr_FR.UTF-8
 export LANGUAGE=fr_FR
 export LC_ALL=fr_FR.UTF-8
@@ -289,13 +289,26 @@ EOT
     sudo apt install -y curl htop vim tmux
     sudo apt install -y supervisor
 
-    # Install postgresql
-    sudo apt-get install -y postgresql
-    sudo pg_dropcluster --stop 9.5 main
-    sudo pg_createcluster --locale fr_FR.UTF-8 9.5 main
-    sudo pg_ctlcluster 9.5 main start
-    sudo su - postgres -c "psql -c \"CREATE ROLE ubuntu WITH LOGIN SUPERUSER CREATEDB CREATEROLE PASSWORD 'ubuntu';\"" 
-    sudo su - postgres -c "psql -c \"CREATE DATABASE ubuntu;\"" 
+    # Install PostgreSQL 9.6
+    if [ ! -f ~/.installsh.pg96 ]; then    
+
+        sudo pg_dropcluster 9.3 main
+        
+        sudo add-apt-repository "deb http://apt.postgresql.org/pub/repos/apt/ trusty-pgdg main"
+        wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -    
+        sudo apt-get update
+        sudo apt-get install -y postgresql-9.6    
+        sudo pg_dropcluster 9.6 main
+            
+        sudo pg_createcluster --locale fr_FR.UTF-8 9.6 main
+        sudo pg_ctlcluster 9.6 main start
+        sudo su - postgres -c "psql -c \"CREATE ROLE ubuntu WITH LOGIN SUPERUSER CREATEDB CREATEROLE PASSWORD 'ubuntu';\"" 
+        sudo su - postgres -c "psql -c \"CREATE DATABASE ubuntu;\"" 
+
+        touch ~/.installsh.pg96
+    else
+        echo "Skipping postgresql-9.6 install. Delete ~/.installsh.pg96 to force installation."
+    fi    
     
     # Install virtualenv
     sudo apt-get install -y python-virtualenv
